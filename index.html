@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Shares Bazaar Investor Loss Registry</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+    <script type="module" src="./app.js"></script>
+  </head>
+  <body>
+    <main>
+      <section class="hero-section" aria-labelledby="page-title">
+        <div class="hero-copy">
+          <div class="brand-row">
+            <div class="brand-mark" aria-hidden="true">SB</div>
+            <div>
+              <p class="eyebrow">Shares Bazaar investors</p>
+              <p class="brand-subtitle">Victim-led recovery registry</p>
+            </div>
+          </div>
+
+          <h1 id="page-title">Investor Loss Registry</h1>
+          <p class="lead">
+            This portal is built by a victim and fellow investor of Shares
+            Bazaar to identify people who lost money, organize proof links, and
+            support recovery and legal accountability.
+          </p>
+
+          <div class="pledge-box">
+            <p class="box-kicker">Victim's pledge</p>
+            <h2>Pursuing recovery and legal accountability</h2>
+            <p>
+              I am a victim and fellow investor of Shares Bazaar. This website
+              is not created by Nanavath Bhupal Naik or by Shares Bazaar.
+              Investors identify Nanavath Bhupal Naik as the founder of Shares
+              Bazaar. This portal is created to bring affected investors
+              together, organize proofs, and help pursue recovery and justice.
+            </p>
+          </div>
+
+          <div class="assurance-grid" aria-label="Registry goals">
+            <div>
+              <span>01</span>
+              <strong>Collect verified victim records</strong>
+            </div>
+            <div>
+              <span>02</span>
+              <strong>Link proof documents safely</strong>
+            </div>
+            <div>
+              <span>03</span>
+              <strong>Track complaint and case status</strong>
+            </div>
+          </div>
+
+          <p class="privacy-note">
+            The form records browser-exposed device details and attempts to
+            capture public IP for verification. MAC addresses cannot be read by
+            public websites. Public ledger rows are masked.
+          </p>
+        </div>
+
+        <section class="form-panel" aria-labelledby="form-title">
+          <form id="investor-form" novalidate>
+            <div class="form-heading">
+              <p class="eyebrow">Submit details</p>
+              <h2 id="form-title">Investor Information</h2>
+            </div>
+
+            <div class="field-grid">
+              <label class="field">
+                <span>Full name</span>
+                <input
+                  id="fullName"
+                  name="fullName"
+                  type="text"
+                  autocomplete="name"
+                  required
+                  minlength="2"
+                  placeholder="Enter your full name"
+                />
+              </label>
+
+              <label class="field">
+                <span>Phone number</span>
+                <input
+                  id="phone"
+                  name="phone"
+                  type="tel"
+                  autocomplete="tel"
+                  required
+                  pattern="^[0-9+\-\s()]{7,20}$"
+                  placeholder="Enter phone number"
+                />
+              </label>
+            </div>
+
+            <label class="field">
+              <span>Email ID <small>optional</small></span>
+              <input
+                id="email"
+                name="email"
+                type="email"
+                autocomplete="email"
+                placeholder="Enter email address"
+              />
+            </label>
+
+            <label class="field">
+              <span>Amount invested</span>
+              <input
+                id="amountInvested"
+                name="amountInvested"
+                type="number"
+                inputmode="decimal"
+                min="0"
+                step="0.01"
+                required
+                placeholder="Enter amount"
+              />
+            </label>
+
+            <label class="field">
+              <span>Google Drive proof link <small>documents, screenshots, payments</small></span>
+              <input
+                id="proofLink"
+                name="proofLink"
+                type="url"
+                required
+                placeholder="https://drive.google.com/..."
+              />
+            </label>
+
+            <fieldset class="case-section">
+              <legend>Case or complaint status</legend>
+              <label class="check-row">
+                <input id="caseFiled" name="caseFiled" type="checkbox" />
+                <span>
+                  I have already filed a complaint or case against Shares
+                  Bazaar, Nanavath Bhupal Naik, or related persons.
+                </span>
+              </label>
+
+              <div id="caseDetailsPanel" class="case-details-panel" hidden>
+                <p class="helper-text">Select what you filed. You can choose more than one.</p>
+                <div class="case-options">
+                  <label><input type="checkbox" name="caseType" value="police_complaint" /> Police complaint</label>
+                  <label><input type="checkbox" name="caseType" value="fir_or_criminal_case" /> FIR / criminal case</label>
+                  <label><input type="checkbox" name="caseType" value="cybercrime_complaint" /> Cybercrime complaint</label>
+                  <label><input type="checkbox" name="caseType" value="civil_recovery_case" /> Civil recovery case</label>
+                  <label><input type="checkbox" name="caseType" value="consumer_complaint" /> Consumer complaint</label>
+                  <label><input type="checkbox" name="caseType" value="other" /> Other legal complaint</label>
+                </div>
+
+                <label class="field">
+                  <span>Case details <small>optional</small></span>
+                  <textarea
+                    id="caseDetails"
+                    name="caseDetails"
+                    rows="3"
+                    placeholder="Police station, FIR number, cybercrime complaint ID, court name, or advocate details"
+                  ></textarea>
+                </label>
+              </div>
+            </fieldset>
+
+            <button id="submitButton" type="submit">
+              <span>Save investor details</span>
+            </button>
+
+            <p id="statusMessage" class="status-message" role="status" aria-live="polite"></p>
+          </form>
+        </section>
+      </section>
+
+      <section class="ledger-section" aria-labelledby="ledger-title">
+        <div class="ledger-shell">
+          <div class="ledger-header">
+            <div class="ledger-title-block">
+              <span class="stream-pill"><span aria-hidden="true"></span> Active database stream</span>
+              <h2 id="ledger-title">Live Registrants Case Ledger</h2>
+              <p>
+                Public records are masked to protect victim identity. Private
+                contact details, proof links, IP, and device data remain hidden.
+              </p>
+            </div>
+
+            <div class="metric-grid" aria-label="Public registry totals">
+              <div class="metric-card metric-primary">
+                <span>Collective claims</span>
+                <strong id="totalAmount">₹0</strong>
+              </div>
+              <div class="metric-card">
+                <span>Victims</span>
+                <strong id="totalVictims">0</strong>
+              </div>
+              <div class="metric-card">
+                <span>Cases filed</span>
+                <strong id="totalCases">0</strong>
+              </div>
+            </div>
+          </div>
+
+          <div class="ledger-toolbar">
+            <label class="search-field">
+              <span class="sr-only">Search masked ledger</span>
+              <input
+                id="ledgerSearch"
+                type="search"
+                placeholder="Search masked record..."
+                autocomplete="off"
+              />
+            </label>
+            <button id="refreshLedger" class="secondary-button" type="button">
+              Re-sync table
+            </button>
+          </div>
+
+          <div class="table-frame">
+            <table>
+              <thead>
+                <tr>
+                  <th>Masked contact</th>
+                  <th>Damage / investment amount</th>
+                  <th>Case filed?</th>
+                  <th>Submitted</th>
+                </tr>
+              </thead>
+              <tbody id="ledgerBody">
+                <tr>
+                  <td colspan="4">Loading public ledger...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p id="ledgerStatus" class="ledger-status" role="status" aria-live="polite"></p>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>
