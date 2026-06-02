@@ -7,10 +7,18 @@ create table if not exists public.investor_submissions (
   phone_number text not null,
   email text,
   amount_invested numeric(14, 2) not null check (amount_invested >= 0),
+  resident_state text not null default '',
+  resident_district text not null default '',
+  tds_details jsonb not null default '[]'::jsonb,
   case_filed boolean not null default false,
   case_types text[] not null default '{}',
   case_details text,
-  proof_link text not null,
+  proof_link text,
+  proof_files jsonb not null default '[]'::jsonb,
+  device_id text not null default '',
+  device_fingerprint text not null default '',
+  device_submission_day date not null default current_date,
+  device_daily_key text not null default '',
   entered_at timestamptz not null default now(),
   ip_address inet,
   user_agent text,
@@ -22,9 +30,71 @@ alter table public.investor_submissions
 add column if not exists case_types text[] not null default '{}';
 
 alter table public.investor_submissions
+add column if not exists resident_state text not null default '';
+
+alter table public.investor_submissions
+add column if not exists resident_district text not null default '';
+
+alter table public.investor_submissions
+add column if not exists tds_details jsonb not null default '[]'::jsonb;
+
+alter table public.investor_submissions
 add column if not exists case_details text;
 
+alter table public.investor_submissions
+add column if not exists proof_files jsonb not null default '[]'::jsonb;
+
+alter table public.investor_submissions
+add column if not exists device_id text not null default '';
+
+alter table public.investor_submissions
+add column if not exists device_fingerprint text not null default '';
+
+alter table public.investor_submissions
+add column if not exists device_submission_day date not null default current_date;
+
+alter table public.investor_submissions
+add column if not exists device_daily_key text not null default '';
+
+alter table public.investor_submissions
+alter column proof_link drop not null;
+
 alter table public.investor_submissions enable row level security;
+
+create table if not exists public.investor_proof_files (
+  id uuid primary key default gen_random_uuid(),
+  submission_id uuid not null references public.investor_submissions(id) on delete cascade,
+  bucket_id text not null default 'investor-proofs',
+  object_path text not null,
+  original_name text not null,
+  mime_type text,
+  size_bytes bigint not null check (size_bytes >= 0),
+  uploaded_at timestamptz not null default now(),
+  created_at timestamptz not null default now(),
+  unique (bucket_id, object_path)
+);
+
+alter table public.investor_proof_files enable row level security;
+
+insert into storage.buckets (id, name, public, file_size_limit)
+values ('investor-proofs', 'investor-proofs', false, 52428800)
+on conflict (id) do update
+set public = false,
+    file_size_limit = 52428800;
+
+drop policy if exists "Allow public proof uploads" on storage.objects;
+create policy "Allow public proof uploads"
+on storage.objects
+for insert
+to anon, authenticated
+with check (bucket_id = 'investor-proofs');
+
+drop policy if exists "Block public proof reads" on storage.objects;
+create policy "Block public proof reads"
+on storage.objects
+for select
+to anon, authenticated
+using (false);
 
 drop policy if exists "Allow public investor submissions" on public.investor_submissions;
 create policy "Allow public investor submissions"
@@ -34,7 +104,15 @@ to anon, authenticated
 with check (
   full_name <> ''
   and phone_number <> ''
-  and proof_link <> ''
+  and resident_state <> ''
+  and resident_district <> ''
+  and jsonb_typeof(tds_details) = 'array'
+  and jsonb_array_length(tds_details) > 0
+  and jsonb_typeof(proof_files) = 'array'
+  and jsonb_array_length(proof_files) > 0
+  and device_id <> ''
+  and device_fingerprint <> ''
+  and device_daily_key <> ''
 );
 
 drop policy if exists "Block public reads" on public.investor_submissions;
@@ -44,11 +122,94 @@ for select
 to anon, authenticated
 using (false);
 
+drop policy if exists "Allow public proof file records" on public.investor_proof_files;
+create policy "Allow public proof file records"
+on public.investor_proof_files
+for insert
+to anon, authenticated
+with check (
+  bucket_id = 'investor-proofs'
+  and object_path <> ''
+  and original_name <> ''
+);
+
+drop policy if exists "Block public proof file record reads" on public.investor_proof_files;
+create policy "Block public proof file record reads"
+on public.investor_proof_files
+for select
+to anon, authenticated
+using (false);
+
 create index if not exists investor_submissions_created_at_idx
 on public.investor_submissions (created_at desc);
 
 create index if not exists investor_submissions_phone_number_idx
 on public.investor_submissions (phone_number);
+
+create index if not exists investor_submissions_location_idx
+on public.investor_submissions (resident_state, resident_district);
+
+create index if not exists investor_submissions_device_day_idx
+on public.investor_submissions (device_id, device_submission_day);
+
+create index if not exists investor_submissions_device_fingerprint_day_idx
+on public.investor_submissions (device_fingerprint, device_submission_day)
+where device_fingerprint <> '';
+
+create index if not exists investor_proof_files_submission_id_idx
+on public.investor_proof_files (submission_id);
+
+create index if not exists investor_proof_files_created_at_idx
+on public.investor_proof_files (created_at desc);
+
+create or replace function public.enforce_device_daily_submission_limit()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  submission_count integer;
+begin
+  new.device_id := left(coalesce(nullif(btrim(new.device_id), ''), ''), 128);
+  new.device_fingerprint := left(coalesce(nullif(btrim(new.device_fingerprint), ''), ''), 128);
+
+  if new.device_id = '' or new.device_fingerprint = '' then
+    raise exception 'Missing device verification details for daily submission limit.';
+  end if;
+
+  if new.device_submission_day is null then
+    new.device_submission_day := current_date;
+  end if;
+
+  new.device_daily_key := new.device_id || ':' || new.device_submission_day::text;
+
+  perform pg_advisory_xact_lock(
+    hashtext(new.device_fingerprint),
+    hashtext(new.device_submission_day::text)
+  );
+
+  select count(*)::integer into submission_count
+  from public.investor_submissions
+  where device_submission_day = new.device_submission_day
+    and (
+      device_id = new.device_id
+      or device_fingerprint = new.device_fingerprint
+    );
+
+  if submission_count >= 3 then
+    raise exception 'Daily submission limit reached for this device.';
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists enforce_device_daily_submission_limit_trigger on public.investor_submissions;
+create trigger enforce_device_daily_submission_limit_trigger
+before insert on public.investor_submissions
+for each row
+execute function public.enforce_device_daily_submission_limit();
 
 create or replace function public.get_public_investor_summary()
 returns table (

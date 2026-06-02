@@ -33,7 +33,15 @@ serve(async (request) => {
     if (
       !requiredText(body.full_name) ||
       !requiredText(body.phone_number) ||
-      !requiredText(body.proof_link) ||
+      !requiredText(body.resident_state) ||
+      !requiredText(body.resident_district) ||
+      !Array.isArray(body.tds_details) ||
+      body.tds_details.length === 0 ||
+      !Array.isArray(body.proof_files) ||
+      body.proof_files.length === 0 ||
+      !requiredText(body.device_id) ||
+      !requiredText(body.device_fingerprint) ||
+      !requiredText(body.device_daily_key) ||
       typeof body.amount_invested !== "number" ||
       body.amount_invested < 0
     ) {
@@ -52,15 +60,27 @@ serve(async (request) => {
       (requiredText(body.ip_address) ? body.ip_address.trim() : null);
     const userAgent = request.headers.get("user-agent");
 
+    const submissionId = requiredText(body.id) ? body.id.trim() : crypto.randomUUID();
     const { error } = await supabase.from("investor_submissions").insert({
+      id: submissionId,
       full_name: body.full_name.trim(),
       phone_number: body.phone_number.trim(),
       email: requiredText(body.email) ? body.email.trim() : null,
       amount_invested: body.amount_invested,
+      resident_state: body.resident_state.trim(),
+      resident_district: body.resident_district.trim(),
+      tds_details: body.tds_details,
       case_filed: Boolean(body.case_filed),
       case_types: Array.isArray(body.case_types) ? body.case_types : [],
       case_details: requiredText(body.case_details) ? body.case_details.trim() : null,
-      proof_link: body.proof_link.trim(),
+      proof_link: requiredText(body.proof_link) ? body.proof_link.trim() : null,
+      proof_files: body.proof_files,
+      device_id: body.device_id.trim(),
+      device_fingerprint: body.device_fingerprint.trim(),
+      device_submission_day: requiredText(body.device_submission_day)
+        ? body.device_submission_day.trim()
+        : new Date().toISOString().slice(0, 10),
+      device_daily_key: body.device_daily_key.trim(),
       entered_at: body.entered_at,
       ip_address: ipAddress,
       user_agent: userAgent,
@@ -78,6 +98,26 @@ serve(async (request) => {
 
     if (error) {
       throw error;
+    }
+
+    const proofFileRows = body.proof_files.map((file: Record<string, unknown>) => ({
+      submission_id: submissionId,
+      bucket_id: typeof file.bucket === "string" ? file.bucket : "investor-proofs",
+      object_path: typeof file.path === "string" ? file.path : "",
+      original_name:
+        typeof file.original_name === "string" ? file.original_name : "proof-file",
+      mime_type: typeof file.mime_type === "string" ? file.mime_type : null,
+      size_bytes: typeof file.size_bytes === "number" ? file.size_bytes : 0,
+      uploaded_at:
+        typeof file.uploaded_at === "string" ? file.uploaded_at : new Date().toISOString(),
+    }));
+
+    const { error: proofFileError } = await supabase
+      .from("investor_proof_files")
+      .insert(proofFileRows);
+
+    if (proofFileError) {
+      throw proofFileError;
     }
 
     return Response.json({ ok: true }, { headers: corsHeaders });

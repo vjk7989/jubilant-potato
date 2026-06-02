@@ -224,6 +224,7 @@ form {
 }
 
 input,
+select,
 textarea {
   width: 100%;
   border: 1px solid var(--line);
@@ -234,9 +235,35 @@ textarea {
   transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
 }
 
-input {
+input[type="file"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+
+input,
+select {
   min-height: 48px;
   padding: 12px 14px;
+}
+
+select {
+  appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+    linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position:
+    calc(100% - 20px) 21px,
+    calc(100% - 14px) 21px;
+  background-size:
+    6px 6px,
+    6px 6px;
+  background-repeat: no-repeat;
 }
 
 textarea {
@@ -246,13 +273,114 @@ textarea {
 }
 
 input:focus,
+select:focus,
 textarea:focus {
   border-color: var(--green);
   background: #fff;
   box-shadow: 0 0 0 4px rgba(7, 130, 101, 0.13);
 }
 
-.case-section {
+.upload-drop-zone {
+  display: grid;
+  gap: 8px;
+  min-height: 156px;
+  place-items: center;
+  padding: 24px 18px;
+  border: 1.5px dashed #9acdbc;
+  border-radius: 8px;
+  color: var(--muted);
+  text-align: center;
+  background:
+    linear-gradient(180deg, rgba(220, 251, 239, 0.75), rgba(255, 255, 255, 0.9)),
+    #fff;
+  transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
+}
+
+.upload-drop-zone:hover,
+.upload-drop-zone.dragging {
+  border-color: var(--green);
+  background:
+    linear-gradient(180deg, rgba(220, 251, 239, 1), rgba(255, 255, 255, 0.96)),
+    #fff;
+  box-shadow: 0 0 0 4px rgba(7, 130, 101, 0.1);
+}
+
+.upload-icon {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border-radius: 8px;
+  color: #fff;
+  font-size: 1.6rem;
+  font-weight: 900;
+  background: linear-gradient(135deg, var(--green), var(--indigo));
+}
+
+.upload-drop-zone strong {
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 18px;
+  border-radius: 8px;
+  color: #fff;
+  background: linear-gradient(135deg, var(--green), var(--green-dark));
+  box-shadow: 0 12px 24px rgba(7, 130, 101, 0.18);
+}
+
+.upload-drop-zone small {
+  color: var(--ink);
+  max-width: 430px;
+  line-height: 1.5;
+}
+
+.file-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.file-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  background: #fff;
+  font-size: 0.9rem;
+  font-weight: 750;
+}
+
+.file-list span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.file-list button {
+  min-height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 10px;
+  color: var(--rose);
+  background: #fff;
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.file-list button:hover {
+  background: var(--rose-soft);
+}
+
+.case-section,
+.tds-section {
   display: grid;
   gap: 12px;
   margin: 0;
@@ -262,10 +390,54 @@ textarea:focus {
   background: linear-gradient(180deg, #f2fbf7, #ffffff);
 }
 
-.case-section legend {
+.case-section legend,
+.tds-section legend {
   padding: 0 6px;
   color: var(--ink);
   font-weight: 900;
+}
+
+.tds-rows {
+  display: grid;
+  gap: 10px;
+}
+
+.tds-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.tds-row .field {
+  gap: 6px;
+}
+
+.remove-row-button,
+.add-row-button {
+  min-height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 12px;
+  background: #fff;
+  font-weight: 900;
+}
+
+.add-row-button {
+  width: fit-content;
+  color: var(--green-dark);
+}
+
+.remove-row-button {
+  color: var(--rose);
+}
+
+.add-row-button:hover {
+  background: var(--mint);
+}
+
+.remove-row-button:hover {
+  background: var(--rose-soft);
 }
 
 .check-row {
@@ -609,6 +781,7 @@ tbody td {
 
   .assurance-grid,
   .field-grid,
+  .tds-row,
   .case-options,
   .metric-grid {
     grid-template-columns: 1fr;

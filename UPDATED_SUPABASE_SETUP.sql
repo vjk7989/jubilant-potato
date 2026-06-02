@@ -1,3 +1,8 @@
+-- Shares Bazaar investor registry database setup
+-- Updated: includes submissions, TDS/location fields, proof file metadata,
+-- private Supabase Storage bucket, upload policies, and masked public ledger.
+-- Run in Supabase Dashboard > SQL Editor > New query.
+
 create table if not exists public.investor_submissions (
   id uuid primary key default gen_random_uuid(),
   full_name text not null,

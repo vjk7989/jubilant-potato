@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { INDIAN_DISTRICTS } from "./districts.js";
 
 const SUPABASE_URL = "https://bnvnwkzeadpvxxssueif.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY =
@@ -18,8 +19,21 @@ const refreshLedger = document.querySelector("#refreshLedger");
 const totalAmount = document.querySelector("#totalAmount");
 const totalVictims = document.querySelector("#totalVictims");
 const totalCases = document.querySelector("#totalCases");
+const proofFilesInput = document.querySelector("#proofFiles");
+const proofDropZone = document.querySelector("#proofDropZone");
+const fileList = document.querySelector("#fileList");
+const tdsRows = document.querySelector("#tdsRows");
+const addTdsRowButton = document.querySelector("#addTdsRow");
+const stateSelect = document.querySelector("#state");
+const districtSelect = document.querySelector("#district");
 
+const PROOF_BUCKET = "investor-proofs";
+const DAILY_SUBMISSION_LIMIT = 3;
+const DEVICE_ID_STORAGE_KEY = "shares_bazaar_device_id";
+const DAILY_SUBMISSIONS_STORAGE_KEY = "shares_bazaar_daily_submissions";
 let publicLedgerRows = [];
+let selectedProofFiles = [];
+let volatileDeviceId = null;
 
 const setStatus = (message, type = "") => {
   statusMessage.textContent = message;
@@ -75,6 +89,130 @@ const getStorageAvailability = (storage) => {
 
 const getBrowserStorageAvailability = (storageName) =>
   safeRun(() => getStorageAvailability(window[storageName]), false);
+
+const cleanText = (value, maxLength = 500) =>
+  String(value ?? "")
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "")
+    .trim()
+    .slice(0, maxLength);
+
+const getStoredValue = (key) => {
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+};
+
+const setStoredValue = (key, value) => {
+  try {
+    window.localStorage.setItem(key, value);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const getRandomId = () => {
+  if (crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+};
+
+const getOrCreateDeviceId = () => {
+  const storedDeviceId = cleanText(getStoredValue(DEVICE_ID_STORAGE_KEY), 128);
+
+  if (storedDeviceId) {
+    return storedDeviceId;
+  }
+
+  if (!volatileDeviceId) {
+    volatileDeviceId = getRandomId();
+    setStoredValue(DEVICE_ID_STORAGE_KEY, volatileDeviceId);
+  }
+
+  return volatileDeviceId;
+};
+
+const getCurrentSubmissionDay = () => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+};
+
+const createDeviceSubmissionWindow = (
+  deviceFingerprint = "",
+  deviceId = getOrCreateDeviceId(),
+) => {
+  const device_submission_day = getCurrentSubmissionDay();
+  const safeDeviceId = cleanText(deviceId, 128);
+
+  return {
+    device_id: safeDeviceId,
+    device_fingerprint: cleanText(deviceFingerprint, 128),
+    device_submission_day,
+    device_daily_key: `${safeDeviceId}:${device_submission_day}`,
+  };
+};
+
+const getLocalSubmissionLog = () => {
+  try {
+    const parsed = JSON.parse(getStoredValue(DAILY_SUBMISSIONS_STORAGE_KEY) || "{}");
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+};
+
+const getLocalSubmissionCount = (deviceDailyKey) => {
+  const count = Number(getLocalSubmissionLog()[deviceDailyKey] || 0);
+  return Number.isFinite(count) ? count : 0;
+};
+
+const recordSuccessfulDeviceSubmission = (deviceDailyKey) => {
+  const log = getLocalSubmissionLog();
+  log[deviceDailyKey] = Math.min(
+    DAILY_SUBMISSION_LIMIT,
+    Number(log[deviceDailyKey] || 0) + 1,
+  );
+  setStoredValue(DAILY_SUBMISSIONS_STORAGE_KEY, JSON.stringify(log));
+};
+
+const getDeviceFingerprint = async (deviceDetails) => {
+  const fingerprintSource = JSON.stringify({
+    user_agent: deviceDetails.user_agent,
+    user_agent_data: deviceDetails.user_agent_data,
+    platform: deviceDetails.platform,
+    language: deviceDetails.language,
+    timezone: deviceDetails.timezone,
+    screen: deviceDetails.screen,
+    hardware_concurrency: deviceDetails.hardware_concurrency,
+    device_memory_gb: deviceDetails.device_memory_gb,
+    max_touch_points: deviceDetails.max_touch_points,
+    web_gl: deviceDetails.browser_features?.web_gl,
+  });
+
+  try {
+    const bytes = new TextEncoder().encode(fingerprintSource);
+    const digest = await crypto.subtle.digest("SHA-256", bytes);
+    return Array.from(new Uint8Array(digest), (byte) =>
+      byte.toString(16).padStart(2, "0"),
+    ).join("");
+  } catch {
+    let hash = 0;
+    for (let index = 0; index < fingerprintSource.length; index += 1) {
+      hash = Math.imul(31, hash) + fingerprintSource.charCodeAt(index);
+      hash |= 0;
+    }
+
+    return `fallback-${Math.abs(hash)}-${fingerprintSource.length}`;
+  }
+};
 
 const getWebGlDetails = () =>
   safeRun(() => {
@@ -318,32 +456,266 @@ const getDeviceDetails = async () => ({
   })),
 });
 
-const getValue = (id) => document.querySelector(`#${id}`).value.trim();
+const getValue = (id, maxLength = 500) =>
+  cleanText(document.querySelector(`#${id}`).value, maxLength);
 
 const getSelectedCaseTypes = () =>
   Array.from(document.querySelectorAll('input[name="caseType"]:checked')).map(
     (input) => input.value,
   );
 
-const buildPayload = async () => {
+const populateDistricts = () => {
+  const districts = INDIAN_DISTRICTS[stateSelect.value] ?? [];
+  while (districtSelect.firstChild) {
+    districtSelect.removeChild(districtSelect.firstChild);
+  }
+
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = districts.length ? "Select district" : "Select state first";
+  districtSelect.appendChild(placeholder);
+
+  districts.forEach((district) => {
+    const option = document.createElement("option");
+    option.value = district;
+    option.textContent = district;
+    districtSelect.appendChild(option);
+  });
+
+  districtSelect.disabled = districts.length === 0;
+};
+
+const getFinancialYearOptions = () => {
+  const now = new Date();
+  const currentYear = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+  const years = [];
+
+  for (let year = 2017; year <= currentYear; year += 1) {
+    years.push(`${year}-${year + 1}`);
+  }
+
+  return years;
+};
+
+const createTdsRow = () => {
+  const row = document.createElement("div");
+  const yearLabel = document.createElement("label");
+  const amountLabel = document.createElement("label");
+  const yearText = document.createElement("span");
+  const amountText = document.createElement("span");
+  const yearSelect = document.createElement("select");
+  const amountInput = document.createElement("input");
+  const removeButton = document.createElement("button");
+
+  row.className = "tds-row";
+  yearLabel.className = "field";
+  amountLabel.className = "field";
+  yearSelect.className = "tds-year";
+  amountInput.className = "tds-amount";
+  removeButton.className = "remove-row-button";
+
+  yearText.textContent = "Financial year";
+  amountText.textContent = "TDS amount";
+  yearSelect.required = true;
+  yearSelect.name = "tdsFinancialYear";
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "Select year";
+  yearSelect.appendChild(placeholder);
+  getFinancialYearOptions().forEach((year) => {
+    const option = document.createElement("option");
+    option.value = year;
+    option.textContent = year;
+    yearSelect.appendChild(option);
+  });
+
+  amountInput.name = "tdsAmount";
+  amountInput.type = "number";
+  amountInput.inputMode = "decimal";
+  amountInput.min = "0";
+  amountInput.step = "0.01";
+  amountInput.required = true;
+  amountInput.placeholder = "Enter TDS amount";
+  removeButton.type = "button";
+  removeButton.textContent = "Remove";
+  removeButton.addEventListener("click", () => {
+    if (tdsRows.children.length > 1) {
+      row.remove();
+    }
+  });
+
+  yearLabel.append(yearText, yearSelect);
+  amountLabel.append(amountText, amountInput);
+  row.append(yearLabel, amountLabel, removeButton);
+  tdsRows.appendChild(row);
+};
+
+const resetTdsRows = () => {
+  while (tdsRows.firstChild) {
+    tdsRows.removeChild(tdsRows.firstChild);
+  }
+
+  createTdsRow();
+};
+
+const getTdsDetails = () =>
+  Array.from(document.querySelectorAll(".tds-row")).map((row) => ({
+    financial_year: row.querySelector(".tds-year").value,
+    amount: Number(row.querySelector(".tds-amount").value),
+  }));
+
+const hasDuplicateTdsYears = () => {
+  const years = getTdsDetails().map((detail) => detail.financial_year);
+  return new Set(years).size !== years.length;
+};
+
+const getProofFiles = () => selectedProofFiles;
+
+const getFileKey = (file) => `${file.name}:${file.size}:${file.lastModified}`;
+
+const syncProofInputFiles = () => {
+  const transfer = new DataTransfer();
+  selectedProofFiles.forEach((file) => transfer.items.add(file));
+  proofFilesInput.files = transfer.files;
+};
+
+const addProofFiles = (files) => {
+  const existingKeys = new Set(selectedProofFiles.map(getFileKey));
+
+  Array.from(files ?? []).forEach((file) => {
+    const key = getFileKey(file);
+
+    if (!existingKeys.has(key)) {
+      selectedProofFiles.push(file);
+      existingKeys.add(key);
+    }
+  });
+
+  syncProofInputFiles();
+  renderSelectedFiles();
+};
+
+const removeProofFile = (fileKey) => {
+  selectedProofFiles = selectedProofFiles.filter((file) => getFileKey(file) !== fileKey);
+  syncProofInputFiles();
+  renderSelectedFiles();
+};
+
+const sanitizeFileName = (fileName) => {
+  const cleaned = fileName
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^[-.]+|[-.]+$/g, "")
+    .slice(0, 120);
+
+  return cleaned || "proof-file";
+};
+
+const formatFileSize = (bytes) => {
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+
+  if (bytes < 1024 * 1024) {
+    return `${(bytes / 1024).toFixed(1)} KB`;
+  }
+
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+};
+
+const renderSelectedFiles = () => {
+  while (fileList.firstChild) {
+    fileList.removeChild(fileList.firstChild);
+  }
+
+  getProofFiles().forEach((file) => {
+    const item = document.createElement("li");
+    const details = document.createElement("div");
+    const name = document.createElement("strong");
+    const meta = document.createElement("span");
+    const removeButton = document.createElement("button");
+
+    name.textContent = file.name;
+    meta.textContent = `${formatFileSize(file.size)}${file.type ? ` • ${file.type}` : ""}`;
+    removeButton.type = "button";
+    removeButton.textContent = "Remove";
+    removeButton.addEventListener("click", () => removeProofFile(getFileKey(file)));
+    details.append(name, meta);
+    item.append(details, removeButton);
+    fileList.appendChild(item);
+  });
+};
+
+const uploadProofFiles = async (submissionId) => {
+  const files = getProofFiles();
+
+  if (!files.length) {
+    throw new Error("Upload at least one proof document.");
+  }
+
+  const uploadedFiles = [];
+
+  for (const [index, file] of files.entries()) {
+    const safeName = sanitizeFileName(file.name);
+    const path = `${submissionId}/${String(index + 1).padStart(2, "0")}-${Date.now()}-${safeName}`;
+    const { error } = await supabase.storage.from(PROOF_BUCKET).upload(path, file, {
+      cacheControl: "3600",
+      contentType: file.type || "application/octet-stream",
+      upsert: false,
+    });
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    uploadedFiles.push({
+      bucket: PROOF_BUCKET,
+      path,
+      original_name: file.name,
+      size_bytes: file.size,
+      mime_type: file.type || null,
+      uploaded_at: new Date().toISOString(),
+    });
+  }
+
+  return uploadedFiles;
+};
+
+const buildPayload = async (deviceWindow = createDeviceSubmissionWindow()) => {
   const [deviceDetails, publicIpDetails] = await Promise.all([
     getDeviceDetails(),
     getPublicIpDetails(),
   ]);
+  const deviceFingerprint = await getDeviceFingerprint(deviceDetails);
+  const submissionWindow = createDeviceSubmissionWindow(
+    deviceFingerprint,
+    deviceWindow.device_id,
+  );
 
   return {
-    full_name: getValue("fullName"),
-    phone_number: getValue("phone"),
-    email: getValue("email") || null,
+    id: crypto.randomUUID(),
+    full_name: getValue("fullName", 120),
+    phone_number: getValue("phone", 20),
+    email: getValue("email", 160) || null,
     amount_invested: Number(getValue("amountInvested")),
+    resident_state: getValue("state", 80),
+    resident_district: getValue("district", 120),
+    tds_details: getTdsDetails(),
     case_filed: caseFiled.checked,
     case_types: caseFiled.checked ? getSelectedCaseTypes() : [],
-    case_details: caseFiled.checked ? getValue("caseDetails") || null : null,
-    proof_link: getValue("proofLink"),
+    case_details: caseFiled.checked ? getValue("caseDetails", 1000) || null : null,
+    proof_link: null,
+    proof_files: [],
     ip_address: publicIpDetails?.ip ?? null,
+    ...submissionWindow,
     device_details: {
       ...deviceDetails,
       public_ip_lookup: publicIpDetails,
+      client_submission_limit: {
+        ...submissionWindow,
+        max_submissions_per_device_per_day: DAILY_SUBMISSION_LIMIT,
+      },
     },
     entered_at: new Date().toISOString(),
   };
@@ -410,15 +782,58 @@ const saveDirectly = async (payload) => {
   }
 };
 
+const saveProofFileRows = async (payload) => {
+  const fileRows = payload.proof_files.map((file) => ({
+    submission_id: payload.id,
+    bucket_id: file.bucket,
+    object_path: file.path,
+    original_name: file.original_name,
+    mime_type: file.mime_type,
+    size_bytes: file.size_bytes,
+    uploaded_at: file.uploaded_at,
+  }));
+
+  if (!fileRows.length) {
+    return;
+  }
+
+  const { error } = await supabase.from("investor_proof_files").insert(fileRows);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+};
+
 const getFriendlySaveError = (error) => {
   const message = error?.message || "Unknown Supabase error.";
 
   if (
     message.includes("Could not find the table") ||
     message.includes("schema cache") ||
-    message.includes("investor_submissions")
+    message.includes("investor_submissions") ||
+    message.includes("investor_proof_files") ||
+    message.includes("resident_state") ||
+    message.includes("resident_district") ||
+    message.includes("tds_details") ||
+    message.includes("proof_files") ||
+    message.includes("proof_link") ||
+    message.includes("device_id") ||
+    message.includes("device_fingerprint") ||
+    message.includes("device_submission_day") ||
+    message.includes("device_daily_key")
   ) {
-    return "Database setup incomplete: create the investor_submissions table by running supabase/schema.sql in the Supabase SQL Editor.";
+    return "Database setup incomplete: run the updated SETUP_SUPABASE.sql in the Supabase SQL Editor so submissions and uploaded file records can be saved.";
+  }
+
+  if (
+    message.includes("Daily submission limit") ||
+    message.includes("daily submission limit")
+  ) {
+    return "Daily limit reached: one device can submit only 3 entries per day. Please try again tomorrow.";
+  }
+
+  if (message.includes("Bucket not found") || message.includes(PROOF_BUCKET)) {
+    return "Proof upload setup incomplete: run the updated SETUP_SUPABASE.sql so Supabase creates the private investor-proofs bucket and upload policy.";
   }
 
   if (message.includes("row-level security") || message.includes("policy")) {
@@ -551,27 +966,50 @@ form.addEventListener("submit", async (event) => {
     return;
   }
 
+  if (hasDuplicateTdsYears()) {
+    setStatus("Each TDS financial year should be added only once.", "error");
+    return;
+  }
+
+  if (!getProofFiles().length) {
+    setStatus("Upload at least one proof document before submitting.", "error");
+    return;
+  }
+
+  const deviceWindow = createDeviceSubmissionWindow();
+
+  if (getLocalSubmissionCount(deviceWindow.device_daily_key) >= DAILY_SUBMISSION_LIMIT) {
+    setStatus(
+      "Daily limit reached: one device can submit only 3 entries per day. Please try again tomorrow.",
+      "error",
+    );
+    return;
+  }
+
   submitButton.disabled = true;
   setStatus("Collecting IP and browser details...");
   let payload;
 
   try {
-    payload = await buildPayload();
+    payload = await buildPayload(deviceWindow);
+    setStatus("Uploading proof documents...");
+    payload.proof_files = await uploadProofFiles(payload.id);
     setStatus("Saving your details...");
-    await saveWithEdgeFunction(payload);
+    await saveDirectly(payload);
+    setStatus("Saving uploaded file records...");
+    await saveProofFileRows(payload);
+    recordSuccessfulDeviceSubmission(payload.device_daily_key);
     form.reset();
+    populateDistricts();
+    resetTdsRows();
+    selectedProofFiles = [];
+    syncProofInputFiles();
+    renderSelectedFiles();
     setStatus("Your details have been saved successfully.", "success");
     await loadLedger();
   } catch (edgeError) {
-    try {
-      await saveDirectly(payload);
-      form.reset();
-      setStatus("Your details have been saved successfully.", "success");
-      await loadLedger();
-    } catch (directError) {
-      console.error(edgeError, directError);
-      setStatus(getFriendlySaveError(directError), "error");
-    }
+    console.error(edgeError);
+    setStatus(getFriendlySaveError(edgeError), "error");
   } finally {
     submitButton.disabled = false;
   }
@@ -592,5 +1030,31 @@ caseFiled.addEventListener("change", () => {
 
 ledgerSearch.addEventListener("input", applyLedgerFilter);
 refreshLedger.addEventListener("click", loadLedger);
+proofFilesInput.addEventListener("change", () => {
+  addProofFiles(proofFilesInput.files);
+});
 
+addTdsRowButton.addEventListener("click", createTdsRow);
+stateSelect.addEventListener("change", populateDistricts);
+
+["dragenter", "dragover"].forEach((eventName) => {
+  proofDropZone.addEventListener(eventName, (event) => {
+    event.preventDefault();
+    proofDropZone.classList.add("dragging");
+  });
+});
+
+["dragleave", "drop"].forEach((eventName) => {
+  proofDropZone.addEventListener(eventName, (event) => {
+    event.preventDefault();
+    proofDropZone.classList.remove("dragging");
+  });
+});
+
+proofDropZone.addEventListener("drop", (event) => {
+  addProofFiles(event.dataTransfer.files);
+});
+
+resetTdsRows();
+populateDistricts();
 loadLedger();
