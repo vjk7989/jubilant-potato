@@ -335,6 +335,12 @@ textarea:focus {
   line-height: 1.5;
 }
 
+.proof-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
 .file-list {
   display: grid;
   gap: 8px;
@@ -786,6 +792,7 @@ tbody td {
 
   .assurance-grid,
   .field-grid,
+  .proof-grid,
   .tds-row,
   .case-options,
   .metric-grid {

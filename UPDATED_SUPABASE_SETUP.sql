@@ -15,6 +15,7 @@ create table if not exists public.investor_submissions (
   case_filed boolean not null default false,
   case_types text[] not null default '{}',
   case_details text,
+  case_proof_link text,
   proof_link text,
   proof_files jsonb not null default '[]'::jsonb,
   device_id text not null default '',
@@ -44,6 +45,9 @@ alter table public.investor_submissions
 add column if not exists case_details text;
 
 alter table public.investor_submissions
+add column if not exists case_proof_link text;
+
+alter table public.investor_submissions
 add column if not exists proof_files jsonb not null default '[]'::jsonb;
 
 alter table public.investor_submissions
@@ -68,6 +72,7 @@ create table if not exists public.investor_proof_files (
   submission_id uuid not null references public.investor_submissions(id) on delete cascade,
   bucket_id text not null default 'investor-proofs',
   object_path text not null,
+  proof_category text not null default 'payment' check (proof_category in ('payment', 'payout')),
   original_name text not null,
   mime_type text,
   size_bytes bigint not null check (size_bytes >= 0),
@@ -78,11 +83,14 @@ create table if not exists public.investor_proof_files (
 
 alter table public.investor_proof_files enable row level security;
 
+alter table public.investor_proof_files
+add column if not exists proof_category text not null default 'payment';
+
 insert into storage.buckets (id, name, public, file_size_limit)
-values ('investor-proofs', 'investor-proofs', false, 20971520)
+values ('investor-proofs', 'investor-proofs', false, 7340032)
 on conflict (id) do update
 set public = false,
-    file_size_limit = 20971520;
+    file_size_limit = 7340032;
 
 drop policy if exists "Allow public proof uploads" on storage.objects;
 create policy "Allow public proof uploads"
@@ -132,6 +140,7 @@ to anon, authenticated
 with check (
   bucket_id = 'investor-proofs'
   and object_path <> ''
+  and proof_category in ('payment', 'payout')
   and original_name <> ''
 );
 
@@ -161,6 +170,9 @@ where device_fingerprint <> '';
 create index if not exists investor_proof_files_submission_id_idx
 on public.investor_proof_files (submission_id);
 
+create index if not exists investor_proof_files_category_idx
+on public.investor_proof_files (proof_category);
+
 create index if not exists investor_proof_files_created_at_idx
 on public.investor_proof_files (created_at desc);
 
@@ -172,7 +184,9 @@ set search_path = public
 as $$
 declare
   submission_count integer;
-  total_proof_bytes bigint;
+  payment_file_count integer;
+  payment_proof_bytes bigint;
+  payout_receipt_bytes bigint;
 begin
   new.device_id := left(coalesce(nullif(btrim(new.device_id), ''), ''), 128);
   new.device_fingerprint := left(coalesce(nullif(btrim(new.device_fingerprint), ''), ''), 128);
@@ -187,13 +201,33 @@ begin
 
   new.device_daily_key := new.device_id || ':' || new.device_submission_day::text;
 
-  select coalesce(sum(greatest((file_item.value ->> 'size_bytes')::bigint, 0)), 0)
-  into total_proof_bytes
-  from jsonb_array_elements(coalesce(new.proof_files, '[]'::jsonb)) as file_item(value)
-  where file_item.value ? 'size_bytes';
+  with proof_items as (
+    select
+      coalesce(file_item.value ->> 'proof_category', '') as proof_category,
+      case
+        when coalesce(file_item.value ->> 'size_bytes', '') ~ '^[0-9]+$'
+          then (file_item.value ->> 'size_bytes')::bigint
+        else 0
+      end as size_bytes
+    from jsonb_array_elements(coalesce(new.proof_files, '[]'::jsonb)) as file_item(value)
+  )
+  select
+    count(*) filter (where proof_category = 'payment')::integer,
+    coalesce(sum(size_bytes) filter (where proof_category = 'payment'), 0),
+    coalesce(sum(size_bytes) filter (where proof_category = 'payout'), 0)
+  into payment_file_count, payment_proof_bytes, payout_receipt_bytes
+  from proof_items;
 
-  if total_proof_bytes > 20971520 then
-    raise exception 'Total proof upload size cannot exceed 20 MB.';
+  if payment_file_count = 0 then
+    raise exception 'Upload at least one proof of payment document.';
+  end if;
+
+  if payment_proof_bytes > 7340032 then
+    raise exception 'Proof of payment files cannot exceed 7 MB total.';
+  end if;
+
+  if payout_receipt_bytes > 7340032 then
+    raise exception 'Proof of payout receipt files cannot exceed 7 MB total.';
   end if;
 
   perform pg_advisory_xact_lock(

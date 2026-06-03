@@ -19,21 +19,43 @@ const refreshLedger = document.querySelector("#refreshLedger");
 const totalAmount = document.querySelector("#totalAmount");
 const totalVictims = document.querySelector("#totalVictims");
 const totalCases = document.querySelector("#totalCases");
-const proofFilesInput = document.querySelector("#proofFiles");
-const proofDropZone = document.querySelector("#proofDropZone");
-const fileList = document.querySelector("#fileList");
+const paymentProofInput = document.querySelector("#paymentProofFiles");
+const paymentProofDropZone = document.querySelector("#paymentProofDropZone");
+const paymentFileList = document.querySelector("#paymentFileList");
+const payoutProofInput = document.querySelector("#payoutProofFiles");
+const payoutProofDropZone = document.querySelector("#payoutProofDropZone");
+const payoutFileList = document.querySelector("#payoutFileList");
 const tdsRows = document.querySelector("#tdsRows");
 const addTdsRowButton = document.querySelector("#addTdsRow");
 const stateSelect = document.querySelector("#state");
 const districtSelect = document.querySelector("#district");
 
 const PROOF_BUCKET = "investor-proofs";
-const MAX_TOTAL_PROOF_BYTES = 20 * 1024 * 1024;
+const MAX_CATEGORY_PROOF_BYTES = 7 * 1024 * 1024;
 const DAILY_SUBMISSION_LIMIT = 3;
 const DEVICE_ID_STORAGE_KEY = "shares_bazaar_device_id";
 const DAILY_SUBMISSIONS_STORAGE_KEY = "shares_bazaar_daily_submissions";
+const PROOF_CATEGORIES = {
+  payment: {
+    input: paymentProofInput,
+    dropZone: paymentProofDropZone,
+    list: paymentFileList,
+    label: "proof of payment",
+    required: true,
+  },
+  payout: {
+    input: payoutProofInput,
+    dropZone: payoutProofDropZone,
+    list: payoutFileList,
+    label: "proof of payout receipts",
+    required: false,
+  },
+};
 let publicLedgerRows = [];
-let selectedProofFiles = [];
+let selectedProofFiles = {
+  payment: [],
+  payout: [],
+};
 let volatileDeviceId = null;
 
 const setStatus = (message, type = "") => {
@@ -570,22 +592,31 @@ const hasDuplicateTdsYears = () => {
   return new Set(years).size !== years.length;
 };
 
-const getProofFiles = () => selectedProofFiles;
+const getProofFiles = (category) => selectedProofFiles[category] ?? [];
+
+const getAllProofFiles = () =>
+  Object.entries(PROOF_CATEGORIES).flatMap(([category]) =>
+    getProofFiles(category).map((file) => ({ category, file })),
+  );
 
 const getFileKey = (file) => `${file.name}:${file.size}:${file.lastModified}`;
 
-const getTotalProofBytes = (files = getProofFiles()) =>
+const getTotalBytesFromFiles = (files) =>
   files.reduce((total, file) => total + file.size, 0);
 
-const syncProofInputFiles = () => {
+const getTotalProofBytes = (category) => getTotalBytesFromFiles(getProofFiles(category));
+
+const syncProofInputFiles = (category) => {
+  const proofConfig = PROOF_CATEGORIES[category];
   const transfer = new DataTransfer();
-  selectedProofFiles.forEach((file) => transfer.items.add(file));
-  proofFilesInput.files = transfer.files;
+  getProofFiles(category).forEach((file) => transfer.items.add(file));
+  proofConfig.input.files = transfer.files;
 };
 
-const addProofFiles = (files) => {
-  const existingKeys = new Set(selectedProofFiles.map(getFileKey));
-  const acceptedFiles = [...selectedProofFiles];
+const addProofFiles = (category, files) => {
+  const proofConfig = PROOF_CATEGORIES[category];
+  const existingKeys = new Set(getProofFiles(category).map(getFileKey));
+  const acceptedFiles = [...getProofFiles(category)];
   const rejectedFiles = [];
 
   Array.from(files ?? []).forEach((file) => {
@@ -595,7 +626,7 @@ const addProofFiles = (files) => {
       return;
     }
 
-    if (getTotalProofBytes(acceptedFiles) + file.size > MAX_TOTAL_PROOF_BYTES) {
+    if (getTotalBytesFromFiles(acceptedFiles) + file.size > MAX_CATEGORY_PROOF_BYTES) {
       rejectedFiles.push(file.name);
       return;
     }
@@ -604,22 +635,24 @@ const addProofFiles = (files) => {
     existingKeys.add(key);
   });
 
-  selectedProofFiles = acceptedFiles;
-  syncProofInputFiles();
-  renderSelectedFiles();
+  selectedProofFiles[category] = acceptedFiles;
+  syncProofInputFiles(category);
+  renderSelectedFiles(category);
 
   if (rejectedFiles.length) {
     setStatus(
-      `Upload limit is 20 MB total. Some files were not added: ${rejectedFiles.join(", ")}`,
+      `${proofConfig.label} upload limit is 7 MB total. Some files were not added: ${rejectedFiles.join(", ")}`,
       "error",
     );
   }
 };
 
-const removeProofFile = (fileKey) => {
-  selectedProofFiles = selectedProofFiles.filter((file) => getFileKey(file) !== fileKey);
-  syncProofInputFiles();
-  renderSelectedFiles();
+const removeProofFile = (category, fileKey) => {
+  selectedProofFiles[category] = getProofFiles(category).filter(
+    (file) => getFileKey(file) !== fileKey,
+  );
+  syncProofInputFiles(category);
+  renderSelectedFiles(category);
 };
 
 const sanitizeFileName = (fileName) => {
@@ -645,12 +678,14 @@ const formatFileSize = (bytes) => {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 };
 
-const renderSelectedFiles = () => {
-  while (fileList.firstChild) {
-    fileList.removeChild(fileList.firstChild);
+const renderSelectedFiles = (category) => {
+  const proofConfig = PROOF_CATEGORIES[category];
+
+  while (proofConfig.list.firstChild) {
+    proofConfig.list.removeChild(proofConfig.list.firstChild);
   }
 
-  getProofFiles().forEach((file) => {
+  getProofFiles(category).forEach((file) => {
     const item = document.createElement("li");
     const details = document.createElement("div");
     const name = document.createElement("strong");
@@ -661,22 +696,24 @@ const renderSelectedFiles = () => {
     meta.textContent = `${formatFileSize(file.size)}${file.type ? ` • ${file.type}` : ""}`;
     removeButton.type = "button";
     removeButton.textContent = "Remove";
-    removeButton.addEventListener("click", () => removeProofFile(getFileKey(file)));
+    removeButton.addEventListener("click", () =>
+      removeProofFile(category, getFileKey(file)),
+    );
     details.append(name, meta);
     item.append(details, removeButton);
-    fileList.appendChild(item);
+    proofConfig.list.appendChild(item);
   });
 
-  if (getProofFiles().length) {
+  if (getProofFiles(category).length) {
     const summary = document.createElement("li");
     summary.className = "file-list-summary";
-    summary.textContent = `Total selected: ${formatFileSize(getTotalProofBytes())} of 20 MB`;
-    fileList.appendChild(summary);
+    summary.textContent = `Total selected: ${formatFileSize(getTotalProofBytes(category))} of 7 MB`;
+    proofConfig.list.appendChild(summary);
   }
 };
 
 const uploadProofFiles = async (submissionId) => {
-  const files = getProofFiles();
+  const files = getAllProofFiles();
 
   if (!files.length) {
     throw new Error("Upload at least one proof document.");
@@ -684,9 +721,10 @@ const uploadProofFiles = async (submissionId) => {
 
   const uploadedFiles = [];
 
-  for (const [index, file] of files.entries()) {
+  for (const [index, entry] of files.entries()) {
+    const { category, file } = entry;
     const safeName = sanitizeFileName(file.name);
-    const path = `${submissionId}/${String(index + 1).padStart(2, "0")}-${Date.now()}-${safeName}`;
+    const path = `${submissionId}/${category}/${String(index + 1).padStart(2, "0")}-${Date.now()}-${safeName}`;
     const { error } = await supabase.storage.from(PROOF_BUCKET).upload(path, file, {
       cacheControl: "3600",
       contentType: file.type || "application/octet-stream",
@@ -700,6 +738,7 @@ const uploadProofFiles = async (submissionId) => {
     uploadedFiles.push({
       bucket: PROOF_BUCKET,
       path,
+      proof_category: category,
       original_name: file.name,
       size_bytes: file.size,
       mime_type: file.type || null,
@@ -733,6 +772,7 @@ const buildPayload = async (deviceWindow = createDeviceSubmissionWindow()) => {
     case_filed: caseFiled.checked,
     case_types: caseFiled.checked ? getSelectedCaseTypes() : [],
     case_details: caseFiled.checked ? getValue("caseDetails", 1000) || null : null,
+    case_proof_link: caseFiled.checked ? getValue("caseProofLink", 500) || null : null,
     proof_link: getValue("proofLink", 500) || null,
     proof_files: [],
     ip_address: publicIpDetails?.ip ?? null,
@@ -758,6 +798,7 @@ const buildDatabasePayload = (payload, includeCaseColumns = true) => {
       case_filed: payload.case_filed,
       case_types: payload.case_types,
       case_details: payload.case_details,
+      case_proof_link: payload.case_proof_link,
     },
   };
 
@@ -815,6 +856,7 @@ const saveProofFileRows = async (payload) => {
     submission_id: payload.id,
     bucket_id: file.bucket,
     object_path: file.path,
+    proof_category: file.proof_category,
     original_name: file.original_name,
     mime_type: file.mime_type,
     size_bytes: file.size_bytes,
@@ -844,7 +886,9 @@ const getFriendlySaveError = (error) => {
     message.includes("resident_district") ||
     message.includes("tds_details") ||
     message.includes("proof_files") ||
+    message.includes("proof_category") ||
     message.includes("proof_link") ||
+    message.includes("case_proof_link") ||
     message.includes("device_id") ||
     message.includes("device_fingerprint") ||
     message.includes("device_submission_day") ||
@@ -862,9 +906,11 @@ const getFriendlySaveError = (error) => {
 
   if (
     message.includes("Total proof upload size") ||
-    message.includes("20 MB")
+    message.includes("proof of payment") ||
+    message.includes("payout receipt") ||
+    message.includes("7 MB")
   ) {
-    return "Upload limit is 20 MB total per submission. Remove a few files or add large proofs as a Google Drive link.";
+    return "Each proof upload box allows up to 7 MB total. Remove a few files or add large audio/video proofs as a Google Drive link.";
   }
 
   if (message.includes("Bucket not found") || message.includes(PROOF_BUCKET)) {
@@ -1006,14 +1052,19 @@ form.addEventListener("submit", async (event) => {
     return;
   }
 
-  if (!getProofFiles().length) {
-    setStatus("Upload at least one proof document before submitting.", "error");
+  if (!getProofFiles("payment").length) {
+    setStatus("Upload at least one proof of payment document before submitting.", "error");
     return;
   }
 
-  if (getTotalProofBytes() > MAX_TOTAL_PROOF_BYTES) {
-    setStatus("Upload limit is 20 MB total per submission. Remove a few files and try again.", "error");
-    return;
+  for (const [category, proofConfig] of Object.entries(PROOF_CATEGORIES)) {
+    if (getTotalProofBytes(category) > MAX_CATEGORY_PROOF_BYTES) {
+      setStatus(
+        `${proofConfig.label} upload limit is 7 MB total. Remove a few files and try again.`,
+        "error",
+      );
+      return;
+    }
   }
 
   const deviceWindow = createDeviceSubmissionWindow();
@@ -1042,9 +1093,11 @@ form.addEventListener("submit", async (event) => {
     form.reset();
     populateDistricts();
     resetTdsRows();
-    selectedProofFiles = [];
-    syncProofInputFiles();
-    renderSelectedFiles();
+    selectedProofFiles = { payment: [], payout: [] };
+    Object.keys(PROOF_CATEGORIES).forEach((category) => {
+      syncProofInputFiles(category);
+      renderSelectedFiles(category);
+    });
     setStatus("Your details have been saved successfully.", "success");
     await loadLedger();
   } catch (edgeError) {
@@ -1065,34 +1118,37 @@ caseFiled.addEventListener("change", () => {
         input.checked = false;
       });
     document.querySelector("#caseDetails").value = "";
+    document.querySelector("#caseProofLink").value = "";
   }
 });
 
 ledgerSearch.addEventListener("input", applyLedgerFilter);
 refreshLedger.addEventListener("click", loadLedger);
-proofFilesInput.addEventListener("change", () => {
-  addProofFiles(proofFilesInput.files);
-});
-
 addTdsRowButton.addEventListener("click", createTdsRow);
 stateSelect.addEventListener("change", populateDistricts);
 
-["dragenter", "dragover"].forEach((eventName) => {
-  proofDropZone.addEventListener(eventName, (event) => {
-    event.preventDefault();
-    proofDropZone.classList.add("dragging");
+Object.entries(PROOF_CATEGORIES).forEach(([category, proofConfig]) => {
+  proofConfig.input.addEventListener("change", () => {
+    addProofFiles(category, proofConfig.input.files);
   });
-});
 
-["dragleave", "drop"].forEach((eventName) => {
-  proofDropZone.addEventListener(eventName, (event) => {
-    event.preventDefault();
-    proofDropZone.classList.remove("dragging");
+  ["dragenter", "dragover"].forEach((eventName) => {
+    proofConfig.dropZone.addEventListener(eventName, (event) => {
+      event.preventDefault();
+      proofConfig.dropZone.classList.add("dragging");
+    });
   });
-});
 
-proofDropZone.addEventListener("drop", (event) => {
-  addProofFiles(event.dataTransfer.files);
+  ["dragleave", "drop"].forEach((eventName) => {
+    proofConfig.dropZone.addEventListener(eventName, (event) => {
+      event.preventDefault();
+      proofConfig.dropZone.classList.remove("dragging");
+    });
+  });
+
+  proofConfig.dropZone.addEventListener("drop", (event) => {
+    addProofFiles(category, event.dataTransfer.files);
+  });
 });
 
 resetTdsRows();

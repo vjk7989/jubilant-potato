@@ -15,13 +15,26 @@ const supabase = createClient(supabaseUrl, serviceRoleKey);
 const requiredText = (value: unknown) =>
   typeof value === "string" && value.trim().length > 0;
 
-const maxTotalProofBytes = 20 * 1024 * 1024;
+const maxCategoryProofBytes = 7 * 1024 * 1024;
+const allowedProofCategories = new Set(["payment", "payout"]);
 
-const getTotalProofBytes = (proofFiles: Array<Record<string, unknown>>) =>
-  proofFiles.reduce((total, file) => {
+const getProofBytesByCategory = (proofFiles: Array<Record<string, unknown>>) =>
+  proofFiles.reduce<Record<string, number>>((totals, file) => {
+    const category = typeof file.proof_category === "string" ? file.proof_category : "";
     const sizeBytes = typeof file.size_bytes === "number" ? file.size_bytes : 0;
-    return total + Math.max(sizeBytes, 0);
-  }, 0);
+    totals[category] = (totals[category] ?? 0) + Math.max(sizeBytes, 0);
+    return totals;
+  }, {});
+
+const hasPaymentProof = (proofFiles: Array<Record<string, unknown>>) =>
+  proofFiles.some((file) => file.proof_category === "payment");
+
+const hasOnlyAllowedProofCategories = (proofFiles: Array<Record<string, unknown>>) =>
+  proofFiles.every(
+    (file) =>
+      typeof file.proof_category === "string" &&
+      allowedProofCategories.has(file.proof_category),
+  );
 
 serve(async (request) => {
   if (request.method === "OPTIONS") {
@@ -59,9 +72,31 @@ serve(async (request) => {
       );
     }
 
-    if (getTotalProofBytes(body.proof_files) > maxTotalProofBytes) {
+    const proofBytesByCategory = getProofBytesByCategory(body.proof_files);
+    if (!hasOnlyAllowedProofCategories(body.proof_files)) {
       return Response.json(
-        { message: "Total proof upload size cannot exceed 20 MB." },
+        { message: "Proof files must be categorized as payment or payout." },
+        { status: 400, headers: corsHeaders },
+      );
+    }
+
+    if (!hasPaymentProof(body.proof_files)) {
+      return Response.json(
+        { message: "Upload at least one proof of payment document." },
+        { status: 400, headers: corsHeaders },
+      );
+    }
+
+    if ((proofBytesByCategory.payment ?? 0) > maxCategoryProofBytes) {
+      return Response.json(
+        { message: "Proof of payment files cannot exceed 7 MB total." },
+        { status: 400, headers: corsHeaders },
+      );
+    }
+
+    if ((proofBytesByCategory.payout ?? 0) > maxCategoryProofBytes) {
+      return Response.json(
+        { message: "Proof of payout receipt files cannot exceed 7 MB total." },
         { status: 400, headers: corsHeaders },
       );
     }
@@ -88,6 +123,9 @@ serve(async (request) => {
       case_filed: Boolean(body.case_filed),
       case_types: Array.isArray(body.case_types) ? body.case_types : [],
       case_details: requiredText(body.case_details) ? body.case_details.trim() : null,
+      case_proof_link: requiredText(body.case_proof_link)
+        ? body.case_proof_link.trim()
+        : null,
       proof_link: requiredText(body.proof_link) ? body.proof_link.trim() : null,
       proof_files: body.proof_files,
       device_id: body.device_id.trim(),
@@ -119,6 +157,8 @@ serve(async (request) => {
       submission_id: submissionId,
       bucket_id: typeof file.bucket === "string" ? file.bucket : "investor-proofs",
       object_path: typeof file.path === "string" ? file.path : "",
+      proof_category:
+        typeof file.proof_category === "string" ? file.proof_category : "payment",
       original_name:
         typeof file.original_name === "string" ? file.original_name : "proof-file",
       mime_type: typeof file.mime_type === "string" ? file.mime_type : null,

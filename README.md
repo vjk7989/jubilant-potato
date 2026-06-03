@@ -14,7 +14,7 @@ A no-login investor submission website for collecting Shares Bazaar loss details
 ## Supabase setup
 
 1. Open the Supabase SQL editor for `https://bnvnwkzeadpvxxssueif.supabase.co`.
-2. Run `UPDATED_SUPABASE_SETUP.sql` from the project root. It creates the submission table, `investor_proof_files` table, private `investor-proofs` Storage bucket, public upload-only policy, insert policy, masked public ledger RPC functions, the 20 MB proof-upload limit, and the 3-submissions-per-device-per-day database trigger.
+2. Run `UPDATED_SUPABASE_SETUP.sql` from the project root. It creates the submission table, `investor_proof_files` table, private `investor-proofs` Storage bucket, public upload-only policy, insert policy, masked public ledger RPC functions, 7 MB category limits for proof uploads, and the 3-submissions-per-device-per-day database trigger.
 3. For best IP collection, deploy the Edge Function in `supabase/functions/collect-investor`.
 4. Set the Edge Function secret `SUPABASE_SERVICE_ROLE_KEY` to your Supabase secret key.
 
@@ -32,13 +32,13 @@ The form uses Supabase SDK inserts/RPC calls instead of building raw SQL strings
 
 ## Data notes
 
-The form collects name, phone number, optional email, amount invested, state or union territory, district, TDS details by financial year, case-filed status, case or complaint type, optional case details, uploaded proof document metadata, entry date, public IP where available, and every browser-exposed metadata field the site can read without asking for extra permission. This includes user agent/client hints, language, platform, device memory, CPU count, touch support, screen and viewport data, timezone, current page/referrer, storage availability and quota, network connection details, battery status where supported, media-device inventory where supported, permission states where supported, plugins, MIME types, and WebGL graphics details.
+The form collects name, phone number, optional email, state or union territory, district, amount invested, proof-of-payment uploads, optional payout-receipt uploads, TDS details by financial year, Google Drive links for audio/video/call recordings, case-filed status, case or complaint type, optional case details, an optional Google Drive link for case-filed documents, entry date, public IP where available, and every browser-exposed metadata field the site can read without asking for extra permission. This includes user agent/client hints, language, platform, device memory, CPU count, touch support, screen and viewport data, timezone, current page/referrer, storage availability and quota, network connection details, battery status where supported, media-device inventory where supported, permission states where supported, plugins, MIME types, and WebGL graphics details.
 
 TDS details are stored in `public.investor_submissions.tds_details` as a JSON array, and location details are stored in `resident_state` and `resident_district`.
 
 The browser creates a persistent local device ID and a browser-fingerprint hash. Supabase stores these in `device_id`, `device_fingerprint`, `device_submission_day`, and `device_daily_key`, then rejects a 4th submission from the same detected device/fingerprint on the same day.
 
-Proof files are uploaded into the private Supabase Storage bucket `investor-proofs`. Each submission is limited to 20 MB total uploaded files. The optional `proof_link` field can store a Google Drive link for larger proofs such as video calls, meeting recordings, long videos, audio records, or other evidence. The public ledger only shows masked contact information, amount, case status, and submitted date. It does not expose names, phone numbers, proof files, IP addresses, proof links, or raw device metadata.
+Proof files are uploaded into the private Supabase Storage bucket `investor-proofs`. Proof-of-payment uploads are limited to 7 MB total, and proof-of-payout-receipt uploads are limited to 7 MB total. Uploaded file rows include a `proof_category` value of `payment` or `payout`. The optional `proof_link` field stores Google Drive links for audio/video/call recordings, and `case_proof_link` stores Google Drive links for case-filed details. The public ledger only shows masked contact information, amount, case status, and submitted date. It does not expose names, phone numbers, proof files, IP addresses, proof links, or raw device metadata.
 
 Admins can view uploaded file metadata in the Supabase table `public.investor_proof_files`. Each row has the `submission_id`, original file name, MIME type, size, bucket name, and Storage object path. The full private files are in Supabase Storage under the `investor-proofs` bucket.
 

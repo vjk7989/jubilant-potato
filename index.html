@@ -120,32 +120,6 @@
               />
             </label>
 
-            <label class="field">
-              <span>Amount invested</span>
-              <input
-                id="amountInvested"
-                name="amountInvested"
-                type="number"
-                inputmode="decimal"
-                min="0"
-                step="0.01"
-                required
-                placeholder="Enter amount"
-              />
-            </label>
-
-            <fieldset class="tds-section">
-              <legend>TDS details</legend>
-              <p class="helper-text">
-                Select the financial year and enter the TDS amount shown in
-                your records. Use the plus button to add another year.
-              </p>
-              <div id="tdsRows" class="tds-rows"></div>
-              <button id="addTdsRow" class="add-row-button" type="button">
-                + Add one more year
-              </button>
-            </fieldset>
-
             <div class="field-grid">
               <label class="field">
                 <span>State / Union Territory</span>
@@ -203,37 +177,84 @@
               </label>
             </div>
 
-            <div class="field">
-              <span>
-                Upload proof files directly
-                <small>
-                  max 20 MB total; include proof of payment, payout receipts, voice records, photos/videos, screenshots, and documents
-                </small>
-              </span>
-              <label id="proofDropZone" class="upload-drop-zone" for="proofFiles">
-                <input
-                  id="proofFiles"
-                  name="proofFiles"
-                  type="file"
-                  multiple
-                  required
-                  accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,.mp3,.wav,.m4a,.aac,.ogg,.webm,.mp4,.mov,.doc,.docx,.xls,.xlsx,image/*,audio/*,video/*,application/pdf"
-                />
-                <span class="upload-icon" aria-hidden="true">+</span>
-                <strong>Click to upload files</strong>
-                <small>
-                  Select multiple files from your device. You can also drag and
-                  drop documents, screenshots, payment receipts, audio records,
-                  photos, or videos here. Total upload size must stay under
-                  20 MB. Use the Google Drive field below for large recordings.
-                </small>
-              </label>
-              <ul id="fileList" class="file-list" aria-live="polite"></ul>
+            <label class="field">
+              <span>Amount invested</span>
+              <input
+                id="amountInvested"
+                name="amountInvested"
+                type="number"
+                inputmode="decimal"
+                min="0"
+                step="0.01"
+                required
+                placeholder="Enter amount"
+              />
+            </label>
+
+            <div class="proof-grid">
+              <div class="field">
+                <span>
+                  Proof of payment
+                  <small>required; multiple documents allowed, max 7 MB total</small>
+                </span>
+                <label id="paymentProofDropZone" class="upload-drop-zone" for="paymentProofFiles">
+                  <input
+                    id="paymentProofFiles"
+                    name="paymentProofFiles"
+                    type="file"
+                    multiple
+                    required
+                    accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,.doc,.docx,.xls,.xlsx,image/*,application/pdf"
+                  />
+                  <span class="upload-icon" aria-hidden="true">+</span>
+                  <strong>Upload payment proofs</strong>
+                  <small>
+                    Add bank transfer screenshots, UPI receipts, payment slips,
+                    statements, or other proof of money paid.
+                  </small>
+                </label>
+                <ul id="paymentFileList" class="file-list" aria-live="polite"></ul>
+              </div>
+
+              <div class="field">
+                <span>
+                  Proof of payout receipts
+                  <small>optional; multiple documents allowed, max 7 MB total</small>
+                </span>
+                <label id="payoutProofDropZone" class="upload-drop-zone" for="payoutProofFiles">
+                  <input
+                    id="payoutProofFiles"
+                    name="payoutProofFiles"
+                    type="file"
+                    multiple
+                    accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,.doc,.docx,.xls,.xlsx,image/*,application/pdf"
+                  />
+                  <span class="upload-icon" aria-hidden="true">+</span>
+                  <strong>Upload payout receipts</strong>
+                  <small>
+                    Add payout receipt screenshots, ledger screenshots, payout
+                    messages, or related return/payment records if available.
+                  </small>
+                </label>
+                <ul id="payoutFileList" class="file-list" aria-live="polite"></ul>
+              </div>
             </div>
+
+            <fieldset class="tds-section">
+              <legend>TDS details</legend>
+              <p class="helper-text">
+                Select the financial year and enter the TDS amount shown in
+                your records. Use the plus button to add another year.
+              </p>
+              <div id="tdsRows" class="tds-rows"></div>
+              <button id="addTdsRow" class="add-row-button" type="button">
+                + Add one more year
+              </button>
+            </fieldset>
 
             <label class="field">
               <span>
-                Google Drive proof link <small>optional</small>
+                Google Drive link for audio, video, or call recordings <small>optional</small>
               </span>
               <input
                 id="proofLink"
@@ -243,9 +264,8 @@
                 placeholder="https://drive.google.com/..."
               />
               <small>
-                Add a Google Drive folder or file link for extra proofs such as
-                video calls, meeting recordings, long videos, audio records, or
-                any other evidence that is too large to upload here.
+                Add Drive links for video calls, meeting recordings, phone call
+                recordings, audio records, long videos, or any other large proofs.
               </small>
             </label>
 
@@ -280,6 +300,22 @@
                     maxlength="1000"
                     placeholder="Police station, FIR number, cybercrime complaint ID, court name, or advocate details"
                   ></textarea>
+                </label>
+
+                <label class="field">
+                  <span>Google Drive link for case filed details <small>optional</small></span>
+                  <input
+                    id="caseProofLink"
+                    name="caseProofLink"
+                    type="url"
+                    maxlength="500"
+                    placeholder="https://drive.google.com/..."
+                  />
+                  <small>
+                    Add Drive links for FIR copies, complaint receipts, cybercrime
+                    complaint screenshots, court documents, advocate notices, or
+                    other case-related proof.
+                  </small>
                 </label>
               </div>
             </fieldset>
