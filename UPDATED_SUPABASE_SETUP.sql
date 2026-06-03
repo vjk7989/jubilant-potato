@@ -79,10 +79,10 @@ create table if not exists public.investor_proof_files (
 alter table public.investor_proof_files enable row level security;
 
 insert into storage.buckets (id, name, public, file_size_limit)
-values ('investor-proofs', 'investor-proofs', false, 52428800)
+values ('investor-proofs', 'investor-proofs', false, 20971520)
 on conflict (id) do update
 set public = false,
-    file_size_limit = 52428800;
+    file_size_limit = 20971520;
 
 drop policy if exists "Allow public proof uploads" on storage.objects;
 create policy "Allow public proof uploads"
@@ -172,6 +172,7 @@ set search_path = public
 as $$
 declare
   submission_count integer;
+  total_proof_bytes bigint;
 begin
   new.device_id := left(coalesce(nullif(btrim(new.device_id), ''), ''), 128);
   new.device_fingerprint := left(coalesce(nullif(btrim(new.device_fingerprint), ''), ''), 128);
@@ -185,6 +186,15 @@ begin
   end if;
 
   new.device_daily_key := new.device_id || ':' || new.device_submission_day::text;
+
+  select coalesce(sum(greatest((file_item.value ->> 'size_bytes')::bigint, 0)), 0)
+  into total_proof_bytes
+  from jsonb_array_elements(coalesce(new.proof_files, '[]'::jsonb)) as file_item(value)
+  where file_item.value ? 'size_bytes';
+
+  if total_proof_bytes > 20971520 then
+    raise exception 'Total proof upload size cannot exceed 20 MB.';
+  end if;
 
   perform pg_advisory_xact_lock(
     hashtext(new.device_fingerprint),

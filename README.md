@@ -14,7 +14,7 @@ A no-login investor submission website for collecting Shares Bazaar loss details
 ## Supabase setup
 
 1. Open the Supabase SQL editor for `https://bnvnwkzeadpvxxssueif.supabase.co`.
-2. Run `UPDATED_SUPABASE_SETUP.sql` from the project root. It creates the submission table, `investor_proof_files` table, private `investor-proofs` Storage bucket, public upload-only policy, insert policy, masked public ledger RPC functions, and the 3-submissions-per-device-per-day database trigger.
+2. Run `UPDATED_SUPABASE_SETUP.sql` from the project root. It creates the submission table, `investor_proof_files` table, private `investor-proofs` Storage bucket, public upload-only policy, insert policy, masked public ledger RPC functions, the 20 MB proof-upload limit, and the 3-submissions-per-device-per-day database trigger.
 3. For best IP collection, deploy the Edge Function in `supabase/functions/collect-investor`.
 4. Set the Edge Function secret `SUPABASE_SERVICE_ROLE_KEY` to your Supabase secret key.
 
@@ -38,7 +38,7 @@ TDS details are stored in `public.investor_submissions.tds_details` as a JSON ar
 
 The browser creates a persistent local device ID and a browser-fingerprint hash. Supabase stores these in `device_id`, `device_fingerprint`, `device_submission_day`, and `device_daily_key`, then rejects a 4th submission from the same detected device/fingerprint on the same day.
 
-Proof files are uploaded into the private Supabase Storage bucket `investor-proofs`. The public ledger only shows masked contact information, amount, case status, and submitted date. It does not expose names, phone numbers, proof files, IP addresses, or raw device metadata.
+Proof files are uploaded into the private Supabase Storage bucket `investor-proofs`. Each submission is limited to 20 MB total uploaded files. The optional `proof_link` field can store a Google Drive link for larger proofs such as video calls, meeting recordings, long videos, audio records, or other evidence. The public ledger only shows masked contact information, amount, case status, and submitted date. It does not expose names, phone numbers, proof files, IP addresses, proof links, or raw device metadata.
 
 Admins can view uploaded file metadata in the Supabase table `public.investor_proof_files`. Each row has the `submission_id`, original file name, MIME type, size, bucket name, and Storage object path. The full private files are in Supabase Storage under the `investor-proofs` bucket.
 

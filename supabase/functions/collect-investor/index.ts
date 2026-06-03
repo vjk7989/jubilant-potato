@@ -15,6 +15,14 @@ const supabase = createClient(supabaseUrl, serviceRoleKey);
 const requiredText = (value: unknown) =>
   typeof value === "string" && value.trim().length > 0;
 
+const maxTotalProofBytes = 20 * 1024 * 1024;
+
+const getTotalProofBytes = (proofFiles: Array<Record<string, unknown>>) =>
+  proofFiles.reduce((total, file) => {
+    const sizeBytes = typeof file.size_bytes === "number" ? file.size_bytes : 0;
+    return total + Math.max(sizeBytes, 0);
+  }, 0);
+
 serve(async (request) => {
   if (request.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -47,6 +55,13 @@ serve(async (request) => {
     ) {
       return Response.json(
         { message: "Missing or invalid required fields." },
+        { status: 400, headers: corsHeaders },
+      );
+    }
+
+    if (getTotalProofBytes(body.proof_files) > maxTotalProofBytes) {
+      return Response.json(
+        { message: "Total proof upload size cannot exceed 20 MB." },
         { status: 400, headers: corsHeaders },
       );
     }

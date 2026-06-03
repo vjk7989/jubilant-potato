@@ -207,7 +207,7 @@
               <span>
                 Upload proof files directly
                 <small>
-                  include proof of payment, payout receipts, voice records, photos/videos, screenshots, and documents
+                  max 20 MB total; include proof of payment, payout receipts, voice records, photos/videos, screenshots, and documents
                 </small>
               </span>
               <label id="proofDropZone" class="upload-drop-zone" for="proofFiles">
@@ -224,12 +224,30 @@
                 <small>
                   Select multiple files from your device. You can also drag and
                   drop documents, screenshots, payment receipts, audio records,
-                  photos, or videos here. Click again to add more files before
-                  submitting.
+                  photos, or videos here. Total upload size must stay under
+                  20 MB. Use the Google Drive field below for large recordings.
                 </small>
               </label>
               <ul id="fileList" class="file-list" aria-live="polite"></ul>
             </div>
+
+            <label class="field">
+              <span>
+                Google Drive proof link <small>optional</small>
+              </span>
+              <input
+                id="proofLink"
+                name="proofLink"
+                type="url"
+                maxlength="500"
+                placeholder="https://drive.google.com/..."
+              />
+              <small>
+                Add a Google Drive folder or file link for extra proofs such as
+                video calls, meeting recordings, long videos, audio records, or
+                any other evidence that is too large to upload here.
+              </small>
+            </label>
 
             <fieldset class="case-section">
               <legend>Case or complaint status</legend>

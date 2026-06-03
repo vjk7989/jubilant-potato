@@ -379,6 +379,11 @@ textarea:focus {
   background: var(--rose-soft);
 }
 
+.file-list-summary {
+  color: var(--green-dark);
+  background: var(--mint);
+}
+
 .case-section,
 .tds-section {
   display: grid;

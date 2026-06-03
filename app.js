@@ -28,6 +28,7 @@ const stateSelect = document.querySelector("#state");
 const districtSelect = document.querySelector("#district");
 
 const PROOF_BUCKET = "investor-proofs";
+const MAX_TOTAL_PROOF_BYTES = 20 * 1024 * 1024;
 const DAILY_SUBMISSION_LIMIT = 3;
 const DEVICE_ID_STORAGE_KEY = "shares_bazaar_device_id";
 const DAILY_SUBMISSIONS_STORAGE_KEY = "shares_bazaar_daily_submissions";
@@ -573,6 +574,9 @@ const getProofFiles = () => selectedProofFiles;
 
 const getFileKey = (file) => `${file.name}:${file.size}:${file.lastModified}`;
 
+const getTotalProofBytes = (files = getProofFiles()) =>
+  files.reduce((total, file) => total + file.size, 0);
+
 const syncProofInputFiles = () => {
   const transfer = new DataTransfer();
   selectedProofFiles.forEach((file) => transfer.items.add(file));
@@ -581,18 +585,35 @@ const syncProofInputFiles = () => {
 
 const addProofFiles = (files) => {
   const existingKeys = new Set(selectedProofFiles.map(getFileKey));
+  const acceptedFiles = [...selectedProofFiles];
+  const rejectedFiles = [];
 
   Array.from(files ?? []).forEach((file) => {
     const key = getFileKey(file);
 
-    if (!existingKeys.has(key)) {
-      selectedProofFiles.push(file);
-      existingKeys.add(key);
+    if (existingKeys.has(key)) {
+      return;
     }
+
+    if (getTotalProofBytes(acceptedFiles) + file.size > MAX_TOTAL_PROOF_BYTES) {
+      rejectedFiles.push(file.name);
+      return;
+    }
+
+    acceptedFiles.push(file);
+    existingKeys.add(key);
   });
 
+  selectedProofFiles = acceptedFiles;
   syncProofInputFiles();
   renderSelectedFiles();
+
+  if (rejectedFiles.length) {
+    setStatus(
+      `Upload limit is 20 MB total. Some files were not added: ${rejectedFiles.join(", ")}`,
+      "error",
+    );
+  }
 };
 
 const removeProofFile = (fileKey) => {
@@ -645,6 +666,13 @@ const renderSelectedFiles = () => {
     item.append(details, removeButton);
     fileList.appendChild(item);
   });
+
+  if (getProofFiles().length) {
+    const summary = document.createElement("li");
+    summary.className = "file-list-summary";
+    summary.textContent = `Total selected: ${formatFileSize(getTotalProofBytes())} of 20 MB`;
+    fileList.appendChild(summary);
+  }
 };
 
 const uploadProofFiles = async (submissionId) => {
@@ -705,7 +733,7 @@ const buildPayload = async (deviceWindow = createDeviceSubmissionWindow()) => {
     case_filed: caseFiled.checked,
     case_types: caseFiled.checked ? getSelectedCaseTypes() : [],
     case_details: caseFiled.checked ? getValue("caseDetails", 1000) || null : null,
-    proof_link: null,
+    proof_link: getValue("proofLink", 500) || null,
     proof_files: [],
     ip_address: publicIpDetails?.ip ?? null,
     ...submissionWindow,
@@ -830,6 +858,13 @@ const getFriendlySaveError = (error) => {
     message.includes("daily submission limit")
   ) {
     return "Daily limit reached: one device can submit only 3 entries per day. Please try again tomorrow.";
+  }
+
+  if (
+    message.includes("Total proof upload size") ||
+    message.includes("20 MB")
+  ) {
+    return "Upload limit is 20 MB total per submission. Remove a few files or add large proofs as a Google Drive link.";
   }
 
   if (message.includes("Bucket not found") || message.includes(PROOF_BUCKET)) {
@@ -973,6 +1008,11 @@ form.addEventListener("submit", async (event) => {
 
   if (!getProofFiles().length) {
     setStatus("Upload at least one proof document before submitting.", "error");
+    return;
+  }
+
+  if (getTotalProofBytes() > MAX_TOTAL_PROOF_BYTES) {
+    setStatus("Upload limit is 20 MB total per submission. Remove a few files and try again.", "error");
     return;
   }
 
